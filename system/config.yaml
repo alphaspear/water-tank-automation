@@ -3,7 +3,7 @@ app:
   port: 80
 
 mqtt:
-  broker: "192.168.29.10"
+  broker: "mosquitto"
   port: 1883
   telemetry_topic: "tank/sensor/telemetry"
 
