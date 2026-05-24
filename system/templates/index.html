@@ -295,6 +295,49 @@
             border-radius: 18px;
         }
 
+        .history-container {
+
+            max-height: 500px;
+
+            overflow-y: auto;
+
+            padding-right: 5px;
+        }
+
+        .event-item {
+
+            background: #0f172a;
+
+            border-radius: 14px;
+
+            padding: 14px;
+
+            margin-bottom: 12px;
+        }
+
+        .event-type {
+
+            font-weight: bold;
+
+            font-size: 16px;
+        }
+
+        .event-message {
+
+            margin-top: 8px;
+
+            color: #cbd5e1;
+        }
+
+        .event-time {
+
+            margin-top: 10px;
+
+            color: #64748b;
+
+            font-size: 13px;
+        }
+
         @media (max-width: 600px) {
 
             body {
@@ -534,175 +577,55 @@
 
     </div>
 
-    <!-- CREATE SCHEDULE -->
+    <!-- EVENT HISTORY -->
 
     <div class="card" style="margin-top:20px;">
 
-        <h2>Create Schedule</h2>
+        <h2>Motor History</h2>
 
-        <button
-            class="btn-blue"
-            onclick="openScheduleModal()"
-        >
-            Add Schedule
-        </button>
+        <div class="history-container">
 
-    </div>
+            {% if events|length == 0 %}
 
-    <!-- SCHEDULES -->
-
-    <div class="card" style="margin-top:20px;">
-
-        <h2>Schedules</h2>
-
-        {% if schedules|length == 0 %}
-
-            <div class="muted">
-                No schedules created.
-            </div>
-
-        {% endif %}
-
-        {% for sched in schedules %}
-
-            <div class="schedule-item">
-
-                <div class="schedule-title">
-                    {{ sched.name }}
+                <div class="muted">
+                    No history available.
                 </div>
 
-                <div class="schedule-meta">
+            {% endif %}
 
-                    {{ sched.start_time }}
+            {% for event in events %}
 
-                    <br>
+                <div class="event-item">
 
-                    Type:
-                    {{ sched.schedule_type }}
+                    <div class="event-type">
 
-                    {% if sched.duration_seconds %}
+                        {{ event.event_type }}
 
-                        <br>
+                    </div>
 
-                        Fallback Timeout:
-                        {{ sched.duration_seconds // 60 }} min
+                    <div class="event-message">
 
-                    {% endif %}
+                        {{ event.message }}
+
+                    </div>
+
+                    <div class="event-time">
+
+                        {{ event.created_at }}
+
+                    </div>
 
                 </div>
 
-                {% if sched.schedule_type == "timer" %}
+            {% endfor %}
 
-                    <div class="badge badge-blue">
-                        TIMER
-                    </div>
-
-                {% else %}
-
-                    <div class="badge badge-orange">
-                        SENSOR
-                    </div>
-
-                {% endif %}
-
-                <button
-                    class="btn-red"
-                    onclick="deleteSchedule({{ sched.id }})"
-                >
-                    Delete
-                </button>
-
-            </div>
-
-        {% endfor %}
-
-    </div>
-
-</div>
-
-<!-- MODAL -->
-
-<div
-    id="scheduleModal"
-    class="modal"
->
-
-    <div class="modal-content">
-
-        <h2>Create Schedule</h2>
-
-        <input
-            type="text"
-            id="schedule_name"
-            placeholder="Schedule Name"
-        >
-
-        <input
-            type="time"
-            id="start_time"
-        >
-
-        <select
-            id="schedule_type"
-        >
-
-            <option value="timer">
-                Time Based
-            </option>
-
-            <option value="sensor">
-                Sensor Terminated
-            </option>
-
-        </select>
-
-        <input
-            type="number"
-            id="schedule_duration"
-            placeholder="Duration / Fallback Timeout (minutes)"
-        >
-
-        <div
-            class="muted"
-            style="margin-top:10px;"
-        >
-            For sensor schedules this acts as
-            emergency timeout if sensor goes offline.
         </div>
-
-        <button
-            class="btn-blue"
-            onclick="createSchedule()"
-        >
-            Create Schedule
-        </button>
-
-        <button
-            class="btn-red"
-            onclick="closeScheduleModal()"
-        >
-            Cancel
-        </button>
 
     </div>
 
 </div>
 
 <script>
-
-function openScheduleModal() {
-
-    document.getElementById(
-        'scheduleModal'
-    ).style.display = 'block';
-}
-
-function closeScheduleModal() {
-
-    document.getElementById(
-        'scheduleModal'
-    ).style.display = 'none';
-}
 
 async function manualOverride() {
 
@@ -733,20 +656,6 @@ async function toggleAutoMode() {
 
 async function stopMotor() {
 
-    const running =
-        "{{ state.schedule_running }}" === "True";
-
-    if (running) {
-
-        const result = confirm(
-            "A schedule is currently running. Stop motor?"
-        );
-
-        if (!result) {
-            return;
-        }
-    }
-
     await fetch('/motor/off', {
         method: 'POST'
     });
@@ -770,17 +679,6 @@ async function startTimedOverride() {
         return;
     }
 
-    if (duration > 15) {
-
-        const confirmLong = confirm(
-            "Timer is more than 15 minutes. Continue?"
-        );
-
-        if (!confirmLong) {
-            return;
-        }
-    }
-
     const formData = new FormData();
 
     formData.append(
@@ -792,66 +690,6 @@ async function startTimedOverride() {
         method: 'POST',
         body: formData
     });
-
-    location.reload();
-}
-
-async function createSchedule() {
-
-    const formData = new FormData();
-
-    formData.append(
-        'name',
-        document.getElementById(
-            'schedule_name'
-        ).value
-    );
-
-    formData.append(
-        'start_time',
-        document.getElementById(
-            'start_time'
-        ).value
-    );
-
-    formData.append(
-        'schedule_type',
-        document.getElementById(
-            'schedule_type'
-        ).value
-    );
-
-    formData.append(
-        'duration_minutes',
-        document.getElementById(
-            'schedule_duration'
-        ).value
-    );
-
-    await fetch('/schedule/create', {
-        method: 'POST',
-        body: formData
-    });
-
-    location.reload();
-}
-
-async function deleteSchedule(id) {
-
-    const confirmDelete = confirm(
-        "Delete this schedule?"
-    );
-
-    if (!confirmDelete) {
-        return;
-    }
-
-    await fetch(
-        `/schedule/delete/${id}`,
-        {
-            method: 'POST'
-        }
-    );
 
     location.reload();
 }

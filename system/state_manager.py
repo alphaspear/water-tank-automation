@@ -27,7 +27,7 @@ class SystemState:
 
     active_mode_display: str = "Idle"
 
-    auto_mode_enabled: bool = False
+    auto_mode_enabled: bool = True
 
 
 state = SystemState()

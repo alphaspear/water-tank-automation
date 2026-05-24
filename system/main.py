@@ -8,6 +8,11 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from fastapi import Form
 
+from event_logger import (
+    log_event,
+    get_recent_events,
+)
+
 from mqtt_handler import mqtt_thread
 
 from state_manager import state
@@ -166,6 +171,7 @@ async def home(request: Request):
             "request": request,
             "state": state,
             "schedules": get_schedules(),
+            "events": get_recent_events(),
         },
     )
 
@@ -311,5 +317,101 @@ async def delete_schedule_route(schedule_id: int):
     delete_schedule(schedule_id)
 
     load_schedules()
+
+    return {"success": True}
+
+
+# =====================================================
+# FILL UNTIL FULL
+# =====================================================
+
+@app.post("/motor/fill-until-full")
+async def fill_until_full():
+
+    # prevent overlap
+
+    if state.current_mode != "idle":
+
+        return {
+            "success": False,
+            "message": "Another mode already active"
+        }
+
+    success = await turn_motor_on()
+
+    if not success:
+
+        return {
+            "success": False
+        }
+
+    state.current_mode = "fill_until_full"
+
+    state.active_mode_display = (
+        "Fill Until Full"
+    )
+
+    state.motor_on = True
+
+    async def monitor_fill():
+
+        start_time = time.time()
+
+        fallback_timeout = (
+            60
+            * config["system"][
+                "sensor_fill_fallback_minutes"
+            ]
+        )
+
+        while True:
+
+            # =========================================
+            # TANK FULL
+            # =========================================
+
+            if state.high_sensor_wet:
+
+                print("Tank full reached")
+
+                break
+
+            # =========================================
+            # SENSOR OFFLINE
+            # =========================================
+
+            if not state.sensor_online:
+
+                print("Sensor offline stop")
+
+                break
+
+            # =========================================
+            # FALLBACK TIMEOUT
+            # =========================================
+
+            elapsed = (
+                time.time() - start_time
+            )
+
+            if elapsed >= fallback_timeout:
+
+                print("Fallback timeout")
+
+                break
+
+            await asyncio.sleep(2)
+
+        await turn_motor_off()
+
+        state.current_mode = "idle"
+
+        state.active_mode_display = "Idle"
+
+        state.motor_on = False
+
+    asyncio.create_task(
+        monitor_fill()
+    )
 
     return {"success": True}

@@ -3,7 +3,6 @@ uvicorn
 jinja2
 aiofiles
 paho-mqtt
-pywizlight
 apscheduler
 psycopg2-binary
 sqlalchemy
