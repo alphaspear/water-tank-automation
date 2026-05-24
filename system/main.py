@@ -313,3 +313,52 @@ async def delete_schedule_route(schedule_id: int):
     load_schedules()
 
     return {"success": True}
+
+
+# =====================================================
+# HEALTH
+# =====================================================
+
+@app.get("/health")
+async def health():
+
+    uptime_seconds = int(time.time())
+
+    return {
+
+        "status": "ok",
+
+        "sensor_online": state.sensor_online,
+
+        "low_sensor_wet": state.low_sensor_wet,
+
+        "high_sensor_wet": state.high_sensor_wet,
+
+        "motor_on": state.motor_on,
+
+        "current_mode": state.current_mode,
+
+        "active_mode_display": (
+            state.active_mode_display
+        ),
+
+        "auto_mode_enabled": (
+            state.auto_mode_enabled
+        ),
+
+        "schedule_running": (
+            state.schedule_running
+        ),
+
+        "active_schedule_name": (
+            state.active_schedule_name
+        ),
+
+        "last_sensor_update": (
+            state.last_sensor_update
+        ),
+
+        "server_timestamp": time.time(),
+
+        "uptime_seconds": uptime_seconds
+    }
