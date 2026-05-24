@@ -103,7 +103,7 @@ async def execute_schedule(schedule):
 
             # Tank full
 
-            if state.tank_full:
+            if state.high_sensor_wet:
 
                 print("Tank full reached")
 

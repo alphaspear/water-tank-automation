@@ -1,7 +1,7 @@
 import asyncio
+import json
+import socket
 import yaml
-
-from pywizlight import wizlight
 
 # =====================================================
 # LOAD CONFIG
@@ -12,17 +12,62 @@ with open("config.yaml", "r") as file:
 
 PLUG_IP = config["motor"]["plug_ip"]
 
-plug = wizlight(PLUG_IP)
+WIZ_PORT = 38899
 
 # =====================================================
-# MOTOR CONTROL
+# SEND UDP COMMAND
+# =====================================================
+
+async def send_wiz_command(payload):
+
+    loop = asyncio.get_running_loop()
+
+    def _send():
+
+        sock = socket.socket(
+            socket.AF_INET,
+            socket.SOCK_DGRAM
+        )
+
+        sock.settimeout(2)
+
+        try:
+
+            sock.sendto(
+                json.dumps(payload).encode(),
+                (PLUG_IP, WIZ_PORT)
+            )
+
+            data, _ = sock.recvfrom(4096)
+
+            return json.loads(
+                data.decode()
+            )
+
+        finally:
+
+            sock.close()
+
+    return await loop.run_in_executor(
+        None,
+        _send
+    )
+
+# =====================================================
+# MOTOR ON
 # =====================================================
 
 async def turn_motor_on():
 
     try:
 
-        await plug.turn_on()
+        await send_wiz_command({
+            "id": 1,
+            "method": "setState",
+            "params": {
+                "state": True
+            }
+        })
 
         return True
 
@@ -32,11 +77,21 @@ async def turn_motor_on():
 
         return False
 
+# =====================================================
+# MOTOR OFF
+# =====================================================
+
 async def turn_motor_off():
 
     try:
 
-        await plug.turn_off()
+        await send_wiz_command({
+            "id": 1,
+            "method": "setState",
+            "params": {
+                "state": False
+            }
+        })
 
         return True
 
@@ -46,13 +101,29 @@ async def turn_motor_off():
 
         return False
 
+# =====================================================
+# GET MOTOR STATE
+# =====================================================
+
 async def get_motor_state():
 
     try:
 
-        state = await plug.updateState()
+        response = await send_wiz_command({
+            "id": 1,
+            "method": "getPilot",
+            "params": {}
+        })
 
-        return state.get_state()
+        result = response.get(
+            "result",
+            {}
+        )
+
+        return result.get(
+            "state",
+            False
+        )
 
     except Exception as e:
 
