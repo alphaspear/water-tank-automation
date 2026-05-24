@@ -12,17 +12,59 @@ with open("config.yaml", "r") as file:
 
 PLUG_IP = config["motor"]["plug_ip"]
 
-plug = wizlight(PLUG_IP)
+# =====================================================
+# INTERNAL ASYNC FUNCTIONS
+# =====================================================
+
+async def _async_turn_on():
+
+    plug = wizlight(PLUG_IP)
+
+    await plug.turn_on()
+
+async def _async_turn_off():
+
+    plug = wizlight(PLUG_IP)
+
+    await plug.turn_off()
+
+async def _async_get_state():
+
+    plug = wizlight(PLUG_IP)
+
+    state = await plug.updateState()
+
+    return state.get_state()
 
 # =====================================================
-# MOTOR CONTROL
+# SAFE LOOP RUNNER
+# =====================================================
+
+def run_async(coro):
+
+    loop = asyncio.new_event_loop()
+
+    asyncio.set_event_loop(loop)
+
+    try:
+
+        result = loop.run_until_complete(coro)
+
+        return result
+
+    finally:
+
+        loop.close()
+
+# =====================================================
+# PUBLIC FUNCTIONS
 # =====================================================
 
 async def turn_motor_on():
 
     try:
 
-        await plug.turn_on()
+        run_async(_async_turn_on())
 
         return True
 
@@ -32,11 +74,13 @@ async def turn_motor_on():
 
         return False
 
+# =====================================================
+
 async def turn_motor_off():
 
     try:
 
-        await plug.turn_off()
+        run_async(_async_turn_off())
 
         return True
 
@@ -46,13 +90,13 @@ async def turn_motor_off():
 
         return False
 
+# =====================================================
+
 async def get_motor_state():
 
     try:
 
-        state = await plug.updateState()
-
-        return state.get_state()
+        return run_async(_async_get_state())
 
     except Exception as e:
 
