@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+
+  water-tank-automation:
+
+    build: .
+
+    container_name: water-tank-automation
+
+    restart: unless-stopped
+
+    network_mode: host
+
+    environment:
+      TZ: Asia/Kolkata
+
+    volumes:
+      - ./:/app

@@ -1,0 +1,23 @@
+app:
+  host: "0.0.0.0"
+  port: 80
+
+mqtt:
+  broker: "192.168.29.10"
+  port: 1883
+  telemetry_topic: "tank/sensor/telemetry"
+
+motor:
+  plug_ip: "192.168.29.130"
+
+database:
+  user: "water-tank-automation-db-admin"
+  password: "ALPSPR@123"
+  host: "192.168.29.10"
+  port: 5432
+  name: "water-tank-automation-db"
+
+system:
+  sensor_timeout_seconds: 15
+  sensor_fill_fallback_minutes: 10
+  manual_override_warning_minutes: 15

@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Water Tank Automation</title>
+
+    <style>
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+
+            margin: 0;
+            padding: 20px;
+
+            background: #0f172a;
+
+            color: white;
+
+            font-family:
+                Inter,
+                Arial,
+                sans-serif;
+        }
+
+        .container {
+
+            max-width: 900px;
+            margin: auto;
+        }
+
+        .header {
+
+            margin-bottom: 25px;
+        }
+
+        .title {
+
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .subtitle {
+
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        .grid {
+
+            display: grid;
+
+            grid-template-columns:
+                repeat(auto-fit, minmax(260px, 1fr));
+
+            gap: 20px;
+        }
+
+        .card {
+
+            background: #1e293b;
+
+            border-radius: 18px;
+
+            padding: 20px;
+
+            box-shadow:
+                0 4px 20px rgba(0,0,0,0.25);
+        }
+
+        .card h2 {
+
+            margin-top: 0;
+            margin-bottom: 20px;
+
+            font-size: 20px;
+        }
+
+        .status-grid {
+
+            display: grid;
+
+            grid-template-columns: 1fr 1fr;
+
+            gap: 14px;
+        }
+
+        .status-item {
+
+            background: #0f172a;
+
+            border-radius: 14px;
+
+            padding: 14px;
+        }
+
+        .status-label {
+
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        .status-value {
+
+            margin-top: 8px;
+
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .green {
+            color: #22c55e;
+        }
+
+        .red {
+            color: #ef4444;
+        }
+
+        .blue {
+            color: #3b82f6;
+        }
+
+        .orange {
+            color: #f59e0b;
+        }
+
+        button {
+
+            width: 100%;
+
+            border: none;
+
+            border-radius: 12px;
+
+            padding: 14px;
+
+            font-size: 15px;
+
+            font-weight: bold;
+
+            cursor: pointer;
+
+            margin-top: 12px;
+
+            transition: 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .btn-green {
+            background: #22c55e;
+            color: white;
+        }
+
+        .btn-red {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-blue {
+            background: #3b82f6;
+            color: white;
+        }
+
+        .btn-orange {
+            background: #f59e0b;
+            color: white;
+        }
+
+        input,
+        select {
+
+            width: 100%;
+
+            margin-top: 12px;
+
+            padding: 14px;
+
+            border-radius: 12px;
+
+            border: none;
+
+            background: #0f172a;
+
+            color: white;
+
+            font-size: 15px;
+        }
+
+        .schedule-item {
+
+            background: #0f172a;
+
+            padding: 16px;
+
+            border-radius: 14px;
+
+            margin-bottom: 15px;
+        }
+
+        .schedule-title {
+
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .schedule-meta {
+
+            color: #94a3b8;
+
+            margin-top: 8px;
+
+            line-height: 1.5;
+        }
+
+        .badge {
+
+            display: inline-block;
+
+            padding:
+                4px 10px;
+
+            border-radius: 999px;
+
+            font-size: 12px;
+
+            font-weight: bold;
+
+            margin-top: 10px;
+        }
+
+        .badge-blue {
+            background: #1d4ed8;
+        }
+
+        .badge-orange {
+            background: #b45309;
+        }
+
+        .active-banner {
+
+            background: #14532d;
+
+            padding: 16px;
+
+            border-radius: 14px;
+
+            margin-bottom: 20px;
+        }
+
+        .muted {
+
+            color: #94a3b8;
+        }
+
+        .modal {
+
+            display: none;
+
+            position: fixed;
+
+            inset: 0;
+
+            background: rgba(0,0,0,0.7);
+
+            z-index: 1000;
+
+            padding: 20px;
+        }
+
+        .modal-content {
+
+            background: #1e293b;
+
+            max-width: 500px;
+
+            margin: auto;
+
+            margin-top: 40px;
+
+            padding: 20px;
+
+            border-radius: 18px;
+        }
+
+        @media (max-width: 600px) {
+
+            body {
+                padding: 12px;
+            }
+
+            .title {
+                font-size: 26px;
+            }
+
+            .status-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+
+        <div class="title">
+            Water Tank Automation
+        </div>
+
+        <div class="subtitle">
+            Smart Motor Controller Dashboard
+        </div>
+
+    </div>
+
+    {% if state.schedule_running %}
+
+        <div class="active-banner">
+
+            <strong>
+                Active Schedule:
+            </strong>
+
+            {{ state.active_schedule_name }}
+
+        </div>
+
+    {% endif %}
+
+    <!-- STATUS -->
+
+    <div class="grid">
+
+        <div class="card">
+
+            <h2>System Status</h2>
+
+            <div class="status-grid">
+
+                <div class="status-item">
+
+                    <div class="status-label">
+                        Sensor Network
+                    </div>
+
+                    <div class="status-value">
+
+                        {% if state.sensor_online %}
+                            <span class="green">ONLINE</span>
+                        {% else %}
+                            <span class="red">OFFLINE</span>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+                <div class="status-item">
+
+                    <div class="status-label">
+                        Low Sensor
+                    </div>
+
+                    <div class="status-value">
+
+                        {% if state.low_sensor_wet %}
+                            <span class="blue">WET</span>
+                        {% else %}
+                            <span class="orange">DRY</span>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+                <div class="status-item">
+
+                    <div class="status-label">
+                        High Sensor
+                    </div>
+
+                    <div class="status-value">
+
+                        {% if state.high_sensor_wet %}
+                            <span class="blue">WET</span>
+                        {% else %}
+                            <span class="orange">DRY</span>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+                <div class="status-item">
+
+                    <div class="status-label">
+                        Motor
+                    </div>
+
+                    <div class="status-value">
+
+                        {% if state.motor_on %}
+                            <span class="green">RUNNING</span>
+                        {% else %}
+                            <span class="red">STOPPED</span>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+                <div class="status-item">
+
+                    <div class="status-label">
+                        Auto Mode
+                    </div>
+
+                    <div class="status-value">
+
+                        {% if state.auto_mode_enabled %}
+                            <span class="green">ENABLED</span>
+                        {% else %}
+                            <span class="orange">DISABLED</span>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+                <div class="status-item">
+
+                    <div class="status-label">
+                        Mode
+                    </div>
+
+                    <div class="status-value">
+
+                        {% if state.current_mode == "idle" %}
+                            <span class="orange">
+                                {{ state.active_mode_display }}
+                            </span>
+                        {% else %}
+                            <span class="green">
+                                {{ state.active_mode_display }}
+                            </span>
+                        {% endif %}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- CONTROLS -->
+
+        <div class="card">
+
+            <h2>Quick Controls</h2>
+
+            <button
+                class="btn-green"
+                onclick="manualOverride()"
+            >
+                Manual Override ON
+            </button>
+
+            <button
+                class="btn-blue"
+                onclick="fillUntilFull()"
+            >
+                Fill Until Full
+            </button>
+
+            <button
+                class="btn-orange"
+                onclick="toggleAutoMode()"
+            >
+                Toggle Auto Mode
+            </button>
+
+            <button
+                class="btn-red"
+                onclick="stopMotor()"
+            >
+                Stop Motor
+            </button>
+
+        </div>
+
+    </div>
+
+    <!-- TIMED OVERRIDE -->
+
+    <div class="card" style="margin-top:20px;">
+
+        <h2>Timed Override</h2>
+
+        <div class="muted">
+            Run motor for fixed duration.
+        </div>
+
+        <input
+            type="number"
+            id="duration_seconds"
+            placeholder="Duration in minutes"
+            min="1"
+        >
+
+        <button
+            class="btn-green"
+            onclick="startTimedOverride()"
+        >
+            Start Timed Override
+        </button>
+
+    </div>
+
+    <!-- CREATE SCHEDULE -->
+
+    <div class="card" style="margin-top:20px;">
+
+        <h2>Create Schedule</h2>
+
+        <button
+            class="btn-blue"
+            onclick="openScheduleModal()"
+        >
+            Add Schedule
+        </button>
+
+    </div>
+
+    <!-- SCHEDULES -->
+
+    <div class="card" style="margin-top:20px;">
+
+        <h2>Schedules</h2>
+
+        {% if schedules|length == 0 %}
+
+            <div class="muted">
+                No schedules created.
+            </div>
+
+        {% endif %}
+
+        {% for sched in schedules %}
+
+            <div class="schedule-item">
+
+                <div class="schedule-title">
+                    {{ sched.name }}
+                </div>
+
+                <div class="schedule-meta">
+
+                    {{ sched.start_time }}
+
+                    <br>
+
+                    Type:
+                    {{ sched.schedule_type }}
+
+                    {% if sched.duration_seconds %}
+
+                        <br>
+
+                        Fallback Timeout:
+                        {{ sched.duration_seconds // 60 }} min
+
+                    {% endif %}
+
+                </div>
+
+                {% if sched.schedule_type == "timer" %}
+
+                    <div class="badge badge-blue">
+                        TIMER
+                    </div>
+
+                {% else %}
+
+                    <div class="badge badge-orange">
+                        SENSOR
+                    </div>
+
+                {% endif %}
+
+                <button
+                    class="btn-red"
+                    onclick="deleteSchedule({{ sched.id }})"
+                >
+                    Delete
+                </button>
+
+            </div>
+
+        {% endfor %}
+
+    </div>
+
+</div>
+
+<!-- MODAL -->
+
+<div
+    id="scheduleModal"
+    class="modal"
+>
+
+    <div class="modal-content">
+
+        <h2>Create Schedule</h2>
+
+        <input
+            type="text"
+            id="schedule_name"
+            placeholder="Schedule Name"
+        >
+
+        <input
+            type="time"
+            id="start_time"
+        >
+
+        <select
+            id="schedule_type"
+        >
+
+            <option value="timer">
+                Time Based
+            </option>
+
+            <option value="sensor">
+                Sensor Terminated
+            </option>
+
+        </select>
+
+        <input
+            type="number"
+            id="schedule_duration"
+            placeholder="Duration / Fallback Timeout (minutes)"
+        >
+
+        <div
+            class="muted"
+            style="margin-top:10px;"
+        >
+            For sensor schedules this acts as
+            emergency timeout if sensor goes offline.
+        </div>
+
+        <button
+            class="btn-blue"
+            onclick="createSchedule()"
+        >
+            Create Schedule
+        </button>
+
+        <button
+            class="btn-red"
+            onclick="closeScheduleModal()"
+        >
+            Cancel
+        </button>
+
+    </div>
+
+</div>
+
+<script>
+
+function openScheduleModal() {
+
+    document.getElementById(
+        'scheduleModal'
+    ).style.display = 'block';
+}
+
+function closeScheduleModal() {
+
+    document.getElementById(
+        'scheduleModal'
+    ).style.display = 'none';
+}
+
+async function manualOverride() {
+
+    await fetch('/motor/manual-on', {
+        method: 'POST'
+    });
+
+    location.reload();
+}
+
+async function fillUntilFull() {
+
+    await fetch('/motor/fill-until-full', {
+        method: 'POST'
+    });
+
+    location.reload();
+}
+
+async function toggleAutoMode() {
+
+    await fetch('/auto-mode/toggle', {
+        method: 'POST'
+    });
+
+    location.reload();
+}
+
+async function stopMotor() {
+
+    const running =
+        "{{ state.schedule_running }}" === "True";
+
+    if (running) {
+
+        const result = confirm(
+            "A schedule is currently running. Stop motor?"
+        );
+
+        if (!result) {
+            return;
+        }
+    }
+
+    await fetch('/motor/off', {
+        method: 'POST'
+    });
+
+    location.reload();
+}
+
+async function startTimedOverride() {
+
+    const duration =
+        document.getElementById(
+            'duration_seconds'
+        ).value;
+
+    if (!duration || duration < 1) {
+
+        alert(
+            "Minimum duration is 1 minute."
+        );
+
+        return;
+    }
+
+    if (duration > 15) {
+
+        const confirmLong = confirm(
+            "Timer is more than 15 minutes. Continue?"
+        );
+
+        if (!confirmLong) {
+            return;
+        }
+    }
+
+    const formData = new FormData();
+
+    formData.append(
+        'duration_minutes',
+        duration
+    );
+
+    await fetch('/motor/manual-timer', {
+        method: 'POST',
+        body: formData
+    });
+
+    location.reload();
+}
+
+async function createSchedule() {
+
+    const formData = new FormData();
+
+    formData.append(
+        'name',
+        document.getElementById(
+            'schedule_name'
+        ).value
+    );
+
+    formData.append(
+        'start_time',
+        document.getElementById(
+            'start_time'
+        ).value
+    );
+
+    formData.append(
+        'schedule_type',
+        document.getElementById(
+            'schedule_type'
+        ).value
+    );
+
+    formData.append(
+        'duration_minutes',
+        document.getElementById(
+            'schedule_duration'
+        ).value
+    );
+
+    await fetch('/schedule/create', {
+        method: 'POST',
+        body: formData
+    });
+
+    location.reload();
+}
+
+async function deleteSchedule(id) {
+
+    const confirmDelete = confirm(
+        "Delete this schedule?"
+    );
+
+    if (!confirmDelete) {
+        return;
+    }
+
+    await fetch(
+        `/schedule/delete/${id}`,
+        {
+            method: 'POST'
+        }
+    );
+
+    location.reload();
+}
+
+</script>
+
+</body>
+</html>
