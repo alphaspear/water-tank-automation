@@ -1,5 +1,6 @@
 import asyncio
 import time
+import yaml
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -36,6 +37,17 @@ from scheduler_engine import (
 
 from database import initialize_database
 
+# =====================================================
+# LOAD CONFIG
+# =====================================================
+
+with open("config.yaml", "r") as file:
+    config = yaml.safe_load(file)
+
+# =====================================================
+# FASTAPI
+# =====================================================
+
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -60,6 +72,11 @@ async def startup_event():
     asyncio.create_task(sensor_health_monitor())
     asyncio.create_task(automation_loop())
 
+    log_event(
+        "SYSTEM_START",
+        "Water tank automation system started"
+    )
+
 # =====================================================
 # SENSOR HEALTH
 # =====================================================
@@ -70,9 +87,12 @@ async def sensor_health_monitor():
 
         if state.last_sensor_update:
 
-            diff = time.time() - state.last_sensor_update
+            diff = (
+                time.time()
+                - state.last_sensor_update
+            )
 
-            if diff > 15:
+            if diff > config["system"]["sensor_timeout_seconds"]:
 
                 state.sensor_online = False
 
@@ -93,7 +113,6 @@ async def automation_loop():
         if state.auto_mode_enabled:
 
             # START MOTOR
-            # low sensor dry
 
             if (
                 not state.low_sensor_wet
@@ -115,8 +134,12 @@ async def automation_loop():
 
                     state.motor_on = True
 
+                    log_event(
+                        "AUTO_START",
+                        "Motor started automatically because low sensor became DRY"
+                    )
+
             # STOP MOTOR
-            # high sensor wet
 
             if (
                 state.high_sensor_wet
@@ -133,6 +156,11 @@ async def automation_loop():
                 state.active_mode_display = "Idle"
 
                 state.motor_on = False
+
+                log_event(
+                    "AUTO_STOP",
+                    "Motor stopped automatically because tank became FULL"
+                )
 
         # =============================================
         # SENSOR OFFLINE SAFETY
@@ -153,6 +181,11 @@ async def automation_loop():
 
             state.motor_on = False
 
+            log_event(
+                "EMERGENCY_STOP",
+                "Motor stopped because sensor telemetry went offline"
+            )
+
         await asyncio.sleep(2)
 
 # =====================================================
@@ -162,6 +195,7 @@ async def automation_loop():
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
 
+    # KEEPING THIS FOR LIVE STATE TRACKING
     state.motor_on = await get_motor_state()
 
     return templates.TemplateResponse(
@@ -186,6 +220,20 @@ async def toggle_auto_mode():
         not state.auto_mode_enabled
     )
 
+    if state.auto_mode_enabled:
+
+        log_event(
+            "AUTO_MODE_ENABLED",
+            "Automatic mode enabled by user"
+        )
+
+    else:
+
+        log_event(
+            "AUTO_MODE_DISABLED",
+            "Automatic mode disabled by user"
+        )
+
     return {
         "success": True,
         "enabled": state.auto_mode_enabled
@@ -197,6 +245,13 @@ async def toggle_auto_mode():
 
 @app.post("/motor/manual-on")
 async def manual_on():
+
+    if state.current_mode != "idle":
+
+        return {
+            "success": False,
+            "message": "Another mode already active"
+        }
 
     success = await turn_motor_on()
 
@@ -210,6 +265,11 @@ async def manual_on():
 
         state.motor_on = True
 
+        log_event(
+            "MANUAL_START",
+            "Motor started manually by user"
+        )
+
     return {"success": success}
 
 # =====================================================
@@ -220,6 +280,13 @@ async def manual_on():
 async def manual_timer(
     duration_minutes: int = Form(...)
 ):
+
+    if state.current_mode != "idle":
+
+        return {
+            "success": False,
+            "message": "Another mode already active"
+        }
 
     duration_seconds = duration_minutes * 60
 
@@ -235,6 +302,11 @@ async def manual_timer(
 
         state.motor_on = True
 
+        log_event(
+            "MANUAL_TIMER_START",
+            f"Timed override started for {duration_minutes} minutes"
+        )
+
         async def timer_stop():
 
             await asyncio.sleep(duration_seconds)
@@ -246,6 +318,11 @@ async def manual_timer(
             state.active_mode_display = "Idle"
 
             state.motor_on = False
+
+            log_event(
+                "MANUAL_TIMER_STOP",
+                "Timed override completed"
+            )
 
         asyncio.create_task(timer_stop())
 
@@ -272,6 +349,11 @@ async def motor_off():
 
     state.active_schedule_name = None
     state.active_schedule_id = None
+
+    log_event(
+        "MANUAL_STOP",
+        "Motor manually stopped by user"
+    )
 
     return {"success": True}
 
@@ -305,6 +387,11 @@ async def create_schedule_route(
 
     load_schedules()
 
+    log_event(
+        "SCHEDULE_CREATED",
+        f"Schedule created: {name}"
+    )
+
     return {"success": True}
 
 # =====================================================
@@ -318,8 +405,12 @@ async def delete_schedule_route(schedule_id: int):
 
     load_schedules()
 
-    return {"success": True}
+    log_event(
+        "SCHEDULE_DELETED",
+        f"Schedule deleted with ID {schedule_id}"
+    )
 
+    return {"success": True}
 
 # =====================================================
 # FILL UNTIL FULL
@@ -327,8 +418,6 @@ async def delete_schedule_route(schedule_id: int):
 
 @app.post("/motor/fill-until-full")
 async def fill_until_full():
-
-    # prevent overlap
 
     if state.current_mode != "idle":
 
@@ -353,6 +442,11 @@ async def fill_until_full():
 
     state.motor_on = True
 
+    log_event(
+        "FILL_UNTIL_FULL_START",
+        "Fill until full started manually"
+    )
+
     async def monitor_fill():
 
         start_time = time.time()
@@ -366,29 +460,17 @@ async def fill_until_full():
 
         while True:
 
-            # =========================================
-            # TANK FULL
-            # =========================================
-
             if state.high_sensor_wet:
 
                 print("Tank full reached")
 
                 break
 
-            # =========================================
-            # SENSOR OFFLINE
-            # =========================================
-
             if not state.sensor_online:
 
                 print("Sensor offline stop")
 
                 break
-
-            # =========================================
-            # FALLBACK TIMEOUT
-            # =========================================
 
             elapsed = (
                 time.time() - start_time
@@ -409,6 +491,11 @@ async def fill_until_full():
         state.active_mode_display = "Idle"
 
         state.motor_on = False
+
+        log_event(
+            "FILL_UNTIL_FULL_STOP",
+            "Fill until full completed"
+        )
 
     asyncio.create_task(
         monitor_fill()

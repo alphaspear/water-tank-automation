@@ -13,6 +13,8 @@ from motor_controller import (
 
 from state_manager import state
 
+from event_logger import log_event
+
 scheduler = AsyncIOScheduler()
 
 # =====================================================
@@ -59,6 +61,11 @@ async def execute_schedule(schedule):
     state.active_schedule_name = schedule["name"]
     state.active_schedule_id = schedule["id"]
 
+    log_event(
+        "SCHEDULE_START",
+        f"Schedule started: {schedule['name']}"
+    )
+
     # =================================================
     # TIMER MODE
     # =================================================
@@ -73,11 +80,15 @@ async def execute_schedule(schedule):
         if not success:
             return
 
+        state.motor_on = True
+
         duration = schedule["duration_seconds"]
 
         await asyncio.sleep(duration)
 
         await turn_motor_off()
+
+        state.motor_on = False
 
     # =================================================
     # SENSOR MODE
@@ -93,6 +104,8 @@ async def execute_schedule(schedule):
         if not success:
             return
 
+        state.motor_on = True
+
         start_time = time.time()
 
         fallback_timeout = (
@@ -101,23 +114,17 @@ async def execute_schedule(schedule):
 
         while True:
 
-            # Tank full
-
             if state.high_sensor_wet:
 
                 print("Tank full reached")
 
                 break
 
-            # Sensor offline fallback
-
             if not state.sensor_online:
 
                 print("Sensor offline fallback stop")
 
                 break
-
-            # Safety timeout
 
             elapsed = time.time() - start_time
 
@@ -131,6 +138,8 @@ async def execute_schedule(schedule):
 
         await turn_motor_off()
 
+        state.motor_on = False
+
     # =================================================
     # RESET
     # =================================================
@@ -141,3 +150,8 @@ async def execute_schedule(schedule):
     state.schedule_running = False
     state.active_schedule_name = None
     state.active_schedule_id = None
+
+    log_event(
+        "SCHEDULE_STOP",
+        f"Schedule completed: {schedule['name']}"
+    )
