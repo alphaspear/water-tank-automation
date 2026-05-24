@@ -15,7 +15,6 @@ from state_manager import state
 from motor_controller import (
     turn_motor_on,
     turn_motor_off,
-    get_motor_state,
 )
 
 from schedule_manager import (
@@ -31,7 +30,13 @@ from scheduler_engine import (
 
 from database import initialize_database
 
+# =====================================================
+# APP
+# =====================================================
+
 app = FastAPI()
+
+APP_START_TIME = time.time()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -53,6 +58,7 @@ async def startup_event():
     load_schedules()
 
     asyncio.create_task(sensor_health_monitor())
+
     asyncio.create_task(automation_loop())
 
 # =====================================================
@@ -81,14 +87,11 @@ async def automation_loop():
 
     while True:
 
-        # =============================================
-        # AUTO MODE
-        # =============================================
+        # =================================================
+        # AUTO MODE START
+        # =================================================
 
         if state.auto_mode_enabled:
-
-            # START MOTOR
-            # low sensor dry
 
             if (
                 not state.low_sensor_wet
@@ -110,35 +113,21 @@ async def automation_loop():
 
                     state.motor_on = True
 
-            # STOP MOTOR
-            # high sensor wet
-
-            if (
-                state.high_sensor_wet
-                and state.motor_on
-                and state.current_mode == "auto_fill"
-            ):
-
-                print("AUTO MODE -> STOPPING MOTOR")
-
-                await turn_motor_off()
-
-                state.current_mode = "idle"
-
-                state.active_mode_display = "Idle"
-
-                state.motor_on = False
-
-        # =============================================
-        # SENSOR OFFLINE SAFETY
-        # =============================================
+        # =================================================
+        # AUTO STOP
+        # =================================================
 
         if (
-            not state.sensor_online
-            and state.current_mode == "auto_fill"
+            state.high_sensor_wet
+            and state.motor_on
+            and state.current_mode in [
+                "auto_fill",
+                "fill_until_full",
+                "scheduled_sensor"
+            ]
         ):
 
-            print("Sensor offline -> emergency stop")
+            print("HIGH SENSOR WET -> STOPPING")
 
             await turn_motor_off()
 
@@ -148,6 +137,42 @@ async def automation_loop():
 
             state.motor_on = False
 
+            state.schedule_running = False
+
+            state.active_schedule_name = None
+
+            state.active_schedule_id = None
+
+        # =================================================
+        # SENSOR OFFLINE SAFETY
+        # =================================================
+
+        if (
+            not state.sensor_online
+            and state.motor_on
+            and state.current_mode in [
+                "auto_fill",
+                "fill_until_full",
+                "scheduled_sensor"
+            ]
+        ):
+
+            print("SENSOR OFFLINE -> EMERGENCY STOP")
+
+            await turn_motor_off()
+
+            state.current_mode = "idle"
+
+            state.active_mode_display = "Idle"
+
+            state.motor_on = False
+
+            state.schedule_running = False
+
+            state.active_schedule_name = None
+
+            state.active_schedule_id = None
+
         await asyncio.sleep(2)
 
 # =====================================================
@@ -156,8 +181,6 @@ async def automation_loop():
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-
-    state.motor_on = await get_motor_state()
 
     return templates.TemplateResponse(
         request=request,
@@ -186,7 +209,7 @@ async def toggle_auto_mode():
     }
 
 # =====================================================
-# MANUAL OVERRIDE
+# MANUAL ON
 # =====================================================
 
 @app.post("/motor/manual-on")
@@ -200,6 +223,27 @@ async def manual_on():
 
         state.active_mode_display = (
             "Manual Override"
+        )
+
+        state.motor_on = True
+
+    return {"success": success}
+
+# =====================================================
+# FILL UNTIL FULL
+# =====================================================
+
+@app.post("/motor/fill-until-full")
+async def fill_until_full():
+
+    success = await turn_motor_on()
+
+    if success:
+
+        state.current_mode = "fill_until_full"
+
+        state.active_mode_display = (
+            "Fill Until Full"
         )
 
         state.motor_on = True
@@ -265,6 +309,7 @@ async def motor_off():
     state.schedule_running = False
 
     state.active_schedule_name = None
+
     state.active_schedule_id = None
 
     return {"success": True}
@@ -288,6 +333,7 @@ async def create_schedule_route(
     duration_seconds = None
 
     if duration_minutes:
+
         duration_seconds = duration_minutes * 60
 
     create_schedule(
@@ -314,7 +360,6 @@ async def delete_schedule_route(schedule_id: int):
 
     return {"success": True}
 
-
 # =====================================================
 # HEALTH
 # =====================================================
@@ -322,7 +367,9 @@ async def delete_schedule_route(schedule_id: int):
 @app.get("/health")
 async def health():
 
-    uptime_seconds = int(time.time())
+    uptime_seconds = int(
+        time.time() - APP_START_TIME
+    )
 
     return {
 

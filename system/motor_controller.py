@@ -13,22 +13,22 @@ with open("config.yaml", "r") as file:
 PLUG_IP = config["motor"]["plug_ip"]
 
 # =====================================================
-# INTERNAL ASYNC FUNCTIONS
+# INTERNAL ASYNC
 # =====================================================
 
-async def _async_turn_on():
+async def _turn_on():
 
     plug = wizlight(PLUG_IP)
 
     await plug.turn_on()
 
-async def _async_turn_off():
+async def _turn_off():
 
     plug = wizlight(PLUG_IP)
 
     await plug.turn_off()
 
-async def _async_get_state():
+async def _get_state():
 
     plug = wizlight(PLUG_IP)
 
@@ -37,24 +37,12 @@ async def _async_get_state():
     return state.get_state()
 
 # =====================================================
-# SAFE LOOP RUNNER
+# THREAD SAFE EXECUTION
 # =====================================================
 
-def run_async(coro):
+def run_async_blocking(coro):
 
-    loop = asyncio.new_event_loop()
-
-    asyncio.set_event_loop(loop)
-
-    try:
-
-        result = loop.run_until_complete(coro)
-
-        return result
-
-    finally:
-
-        loop.close()
+    return asyncio.run(coro)
 
 # =====================================================
 # PUBLIC FUNCTIONS
@@ -64,7 +52,10 @@ async def turn_motor_on():
 
     try:
 
-        run_async(_async_turn_on())
+        await asyncio.to_thread(
+            run_async_blocking,
+            _turn_on()
+        )
 
         return True
 
@@ -80,7 +71,10 @@ async def turn_motor_off():
 
     try:
 
-        run_async(_async_turn_off())
+        await asyncio.to_thread(
+            run_async_blocking,
+            _turn_off()
+        )
 
         return True
 
@@ -96,7 +90,10 @@ async def get_motor_state():
 
     try:
 
-        return run_async(_async_get_state())
+        return await asyncio.to_thread(
+            run_async_blocking,
+            _get_state()
+        )
 
     except Exception as e:
 

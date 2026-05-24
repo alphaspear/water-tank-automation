@@ -8,17 +8,13 @@ services:
 
     restart: unless-stopped
 
+    network_mode: host
+
     depends_on:
       - mosquitto
 
-    ports:
-      - "80:80"
-
     environment:
       TZ: Asia/Kolkata
-
-    volumes:
-      - ./:/app
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
@@ -34,8 +30,7 @@ services:
 
     restart: unless-stopped
 
-    ports:
-      - "1883:1883"
+    network_mode: host
 
     volumes:
       - ./mosquitto/config:/mosquitto/config
