@@ -17,3 +17,5 @@ services:
 
     volumes:
       - ./:/app
+
+    privileged: true

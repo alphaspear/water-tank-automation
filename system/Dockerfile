@@ -14,7 +14,15 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # =====================================================
-# INSTALL DEPENDENCIES
+# SYSTEM DEPENDENCIES
+# =====================================================
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# =====================================================
+# INSTALL PYTHON DEPENDENCIES
 # =====================================================
 
 COPY requirements.txt .
@@ -28,10 +36,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # =====================================================
-# PORT
+# EXPOSE
 # =====================================================
 
 EXPOSE 80
+EXPOSE 1883
+EXPOSE 38899/udp
+EXPOSE 38900/udp
 
 # =====================================================
 # START
