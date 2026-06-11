@@ -5,8 +5,10 @@
 // SENSOR PINS
 // =====================================================
 
-#define LOW_SENSOR_PIN 14
-#define HIGH_SENSOR_PIN 12
+#define SENSOR_POWER_PIN 5   // D1
+
+#define LOW_SENSOR_PIN 14    // D5
+#define HIGH_SENSOR_PIN 12   // D6
 
 // =====================================================
 // WIFI
@@ -33,7 +35,6 @@ const char* TOPIC_STATUS =
 // =====================================================
 
 WiFiClient espClient;
-
 PubSubClient client(espClient);
 
 // =====================================================
@@ -69,11 +70,9 @@ void connectWiFi() {
   }
 
   Serial.println();
-
   Serial.println("WiFi Connected");
 
   Serial.print("IP Address: ");
-
   Serial.println(WiFi.localIP());
 }
 
@@ -104,7 +103,6 @@ void connectMQTT() {
     } else {
 
       Serial.print("MQTT Failed rc=");
-
       Serial.println(client.state());
 
       delay(3000);
@@ -113,42 +111,41 @@ void connectMQTT() {
 }
 
 // =====================================================
-// DISCHARGE PIN
-// =====================================================
-
-void dischargePin(int pin) {
-
-  pinMode(pin, OUTPUT);
-
-  digitalWrite(pin, LOW);
-
-  delay(50);
-
-  pinMode(pin, INPUT);
-}
-
-// =====================================================
-// STABLE SENSOR READ
+// SENSOR READ
 // =====================================================
 
 bool readStableSensor(int pin) {
 
+  // Power sensors only briefly
+
+  digitalWrite(
+    SENSOR_POWER_PIN,
+    HIGH
+  );
+
+  delay(20);
+
   int highCount = 0;
 
-  int totalReads = 15;
+  const int totalReads = 20;
 
   for (int i = 0; i < totalReads; i++) {
 
-    int value = digitalRead(pin);
-
-    if (value == HIGH) {
+    if (digitalRead(pin) == HIGH) {
       highCount++;
     }
 
-    delay(50);
+    delay(5);
   }
 
-  return highCount >= 14;
+  // Turn sensor power OFF
+
+  digitalWrite(
+    SENSOR_POWER_PIN,
+    LOW
+  );
+
+  return highCount >= 18;
 }
 
 // =====================================================
@@ -163,7 +160,6 @@ void publishTelemetry(
   String payload = "{";
 
   payload += "\"low_sensor_wet\":";
-
   payload += lowSensorWet
     ? "true"
     : "false";
@@ -171,7 +167,6 @@ void publishTelemetry(
   payload += ",";
 
   payload += "\"high_sensor_wet\":";
-
   payload += highSensorWet
     ? "true"
     : "false";
@@ -179,13 +174,11 @@ void publishTelemetry(
   payload += ",";
 
   payload += "\"rssi\":";
-
   payload += WiFi.RSSI();
 
   payload += ",";
 
   payload += "\"uptime\":";
-
   payload += millis();
 
   payload += "}";
@@ -207,15 +200,32 @@ void setup() {
 
   Serial.begin(115200);
 
-  pinMode(LOW_SENSOR_PIN, INPUT);
+  pinMode(
+    SENSOR_POWER_PIN,
+    OUTPUT
+  );
 
-  pinMode(HIGH_SENSOR_PIN, INPUT);
+  digitalWrite(
+    SENSOR_POWER_PIN,
+    LOW
+  );
+
+  pinMode(
+    LOW_SENSOR_PIN,
+    INPUT
+  );
+
+  pinMode(
+    HIGH_SENSOR_PIN,
+    INPUT
+  );
 
   delay(1000);
 
   Serial.println();
-
-  Serial.println("Dual Tank Sensor Boot");
+  Serial.println(
+    "Dual Tank Sensor Boot"
+  );
 
   connectWiFi();
 
@@ -231,14 +241,18 @@ void setup() {
 
 void loop() {
 
-  // WiFi reconnect
+  // -----------------------------------
+  // WIFI
+  // -----------------------------------
 
   if (WiFi.status() != WL_CONNECTED) {
 
     connectWiFi();
   }
 
-  // MQTT reconnect
+  // -----------------------------------
+  // MQTT
+  // -----------------------------------
 
   if (!client.connected()) {
 
@@ -247,47 +261,65 @@ void loop() {
 
   client.loop();
 
-  // ===================================================
-  // DISCHARGE
-  // ===================================================
-
-  dischargePin(LOW_SENSOR_PIN);
-
-  dischargePin(HIGH_SENSOR_PIN);
-
-  // ===================================================
+  // -----------------------------------
   // READ SENSORS
-  // ===================================================
+  // -----------------------------------
 
   bool lowSensorWet =
-    readStableSensor(LOW_SENSOR_PIN);
+      readStableSensor(
+        LOW_SENSOR_PIN
+      );
 
   bool highSensorWet =
-    readStableSensor(HIGH_SENSOR_PIN);
+      readStableSensor(
+        HIGH_SENSOR_PIN
+      );
 
-  // ===================================================
+  // -----------------------------------
+  // IMPOSSIBLE STATE CHECK
+  // -----------------------------------
+
+  if (
+      highSensorWet &&
+      !lowSensorWet
+  ) {
+
+    Serial.println(
+      "ERROR: IMPOSSIBLE SENSOR STATE"
+    );
+
+    // Report fault condition
+
+    highSensorWet = false;
+  }
+
+  // -----------------------------------
   // DEBUG
-  // ===================================================
+  // -----------------------------------
 
   Serial.print("LOW SENSOR: ");
 
   Serial.println(
-    lowSensorWet ? "WET" : "DRY"
+    lowSensorWet
+      ? "WET"
+      : "DRY"
   );
 
   Serial.print("HIGH SENSOR: ");
 
   Serial.println(
-    highSensorWet ? "WET" : "DRY"
+    highSensorWet
+      ? "WET"
+      : "DRY"
   );
 
-  // ===================================================
+  // -----------------------------------
   // TELEMETRY
-  // ===================================================
+  // -----------------------------------
 
   if (
-    millis() - lastTelemetry
-    >= telemetryInterval
+      millis() - lastTelemetry >=
+      telemetryInterval
   ) {
 
     publishTelemetry(
