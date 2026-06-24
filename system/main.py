@@ -208,7 +208,21 @@ async def home(request: Request):
             "events": get_recent_events(),
         },
     )
+# =====================================================
+# HEALTH CHECK
+# =====================================================
 
+@app.get("/health")
+async def health():
+
+    return {
+        "status": "healthy",
+        "sensor_online": state.sensor_online,
+        "motor_on": state.motor_on,
+        "current_mode": state.current_mode,
+        "auto_mode_enabled": state.auto_mode_enabled,
+    }
+    
 # =====================================================
 # AUTO MODE TOGGLE
 # =====================================================
