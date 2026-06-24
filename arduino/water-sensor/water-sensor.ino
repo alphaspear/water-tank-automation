@@ -5,8 +5,11 @@
 // SENSOR PINS
 // =====================================================
 
-#define LOW_SENSOR_PIN 14
-#define HIGH_SENSOR_PIN 12
+#define LOW_SENSOR_POWER_PIN   5   // D1
+#define HIGH_SENSOR_POWER_PIN  4   // D2
+
+#define LOW_SENSOR_PIN         14  // D5
+#define HIGH_SENSOR_PIN        12  // D6
 
 // =====================================================
 // WIFI
@@ -33,16 +36,24 @@ const char* TOPIC_STATUS =
 // =====================================================
 
 WiFiClient espClient;
-
 PubSubClient client(espClient);
 
 // =====================================================
 // TIMERS
 // =====================================================
 
-unsigned long lastTelemetry = 0;
+unsigned long lastPublish = 0;
+unsigned long lastMeasurement = 0;
 
-const unsigned long telemetryInterval = 5000;
+const unsigned long publishInterval = 10000;      // 10 sec
+const unsigned long measurementInterval = 5000;   // 5 sec
+
+// =====================================================
+// SENSOR STATE
+// =====================================================
+
+bool lowSensorWet = false;
+bool highSensorWet = false;
 
 // =====================================================
 // WIFI
@@ -58,22 +69,18 @@ void connectWiFi() {
   );
 
   Serial.println();
-
   Serial.print("Connecting WiFi");
 
   while (WiFi.status() != WL_CONNECTED) {
 
     delay(500);
-
     Serial.print(".");
   }
 
   Serial.println();
-
   Serial.println("WiFi Connected");
 
   Serial.print("IP Address: ");
-
   Serial.println(WiFi.localIP());
 }
 
@@ -88,7 +95,6 @@ void connectMQTT() {
     Serial.println("Connecting MQTT");
 
     String clientId = "tank_sensor_";
-
     clientId += String(ESP.getChipId());
 
     if (client.connect(clientId.c_str())) {
@@ -104,7 +110,6 @@ void connectMQTT() {
     } else {
 
       Serial.print("MQTT Failed rc=");
-
       Serial.println(client.state());
 
       delay(3000);
@@ -113,16 +118,15 @@ void connectMQTT() {
 }
 
 // =====================================================
-// DISCHARGE PIN
+// DISCHARGE
 // =====================================================
 
 void dischargePin(int pin) {
 
   pinMode(pin, OUTPUT);
-
   digitalWrite(pin, LOW);
 
-  delay(50);
+  delay(20);
 
   pinMode(pin, INPUT);
 }
@@ -134,58 +138,77 @@ void dischargePin(int pin) {
 bool readStableSensor(int pin) {
 
   int highCount = 0;
-
-  int totalReads = 15;
+  const int totalReads = 15;
 
   for (int i = 0; i < totalReads; i++) {
 
-    int value = digitalRead(pin);
-
-    if (value == HIGH) {
+    if (digitalRead(pin) == HIGH) {
       highCount++;
     }
 
-    delay(50);
+    delay(10);
   }
 
   return highCount >= 14;
 }
 
 // =====================================================
+// POWERED SENSOR READ
+// =====================================================
+
+bool readPoweredSensor(
+  int powerPin,
+  int sensorPin
+) {
+
+  // remove residual charge
+  dischargePin(sensorPin);
+
+  // apply power
+
+  pinMode(powerPin, OUTPUT);
+  digitalWrite(powerPin, HIGH);
+
+  delay(100);
+
+  bool result =
+    readStableSensor(sensorPin);
+
+  // remove power
+
+  digitalWrite(powerPin, LOW);
+
+  pinMode(powerPin, INPUT);
+
+  dischargePin(sensorPin);
+
+  return result;
+}
+
+// =====================================================
 // TELEMETRY
 // =====================================================
 
-void publishTelemetry(
-  bool lowSensorWet,
-  bool highSensorWet
-) {
+void publishTelemetry() {
 
   String payload = "{";
 
   payload += "\"low_sensor_wet\":";
-
-  payload += lowSensorWet
-    ? "true"
-    : "false";
+  payload += lowSensorWet ? "true" : "false";
 
   payload += ",";
 
   payload += "\"high_sensor_wet\":";
-
-  payload += highSensorWet
-    ? "true"
-    : "false";
+  payload += highSensorWet ? "true" : "false";
 
   payload += ",";
 
   payload += "\"rssi\":";
-
   payload += WiFi.RSSI();
 
   payload += ",";
 
   payload += "\"uptime\":";
-
   payload += millis();
 
   payload += "}";
@@ -208,13 +231,14 @@ void setup() {
   Serial.begin(115200);
 
   pinMode(LOW_SENSOR_PIN, INPUT);
-
   pinMode(HIGH_SENSOR_PIN, INPUT);
+
+  pinMode(LOW_SENSOR_POWER_PIN, INPUT);
+  pinMode(HIGH_SENSOR_POWER_PIN, INPUT);
 
   delay(1000);
 
   Serial.println();
-
   Serial.println("Dual Tank Sensor Boot");
 
   connectWiFi();
@@ -231,72 +255,63 @@ void setup() {
 
 void loop() {
 
-  // WiFi reconnect
-
   if (WiFi.status() != WL_CONNECTED) {
-
     connectWiFi();
   }
 
-  // MQTT reconnect
-
   if (!client.connected()) {
-
     connectMQTT();
   }
 
   client.loop();
 
-  // ===================================================
-  // DISCHARGE
-  // ===================================================
-
-  dischargePin(LOW_SENSOR_PIN);
-
-  dischargePin(HIGH_SENSOR_PIN);
-
-  // ===================================================
-  // READ SENSORS
-  // ===================================================
-
-  bool lowSensorWet =
-    readStableSensor(LOW_SENSOR_PIN);
-
-  bool highSensorWet =
-    readStableSensor(HIGH_SENSOR_PIN);
-
-  // ===================================================
-  // DEBUG
-  // ===================================================
-
-  Serial.print("LOW SENSOR: ");
-
-  Serial.println(
-    lowSensorWet ? "WET" : "DRY"
-  );
-
-  Serial.print("HIGH SENSOR: ");
-
-  Serial.println(
-    highSensorWet ? "WET" : "DRY"
-  );
-
-  // ===================================================
-  // TELEMETRY
-  // ===================================================
+  // ==========================================
+  // SENSOR MEASUREMENT EVERY 5 SECONDS
+  // ==========================================
 
   if (
-    millis() - lastTelemetry
-    >= telemetryInterval
+    millis() - lastMeasurement
+    >= measurementInterval
   ) {
 
-    publishTelemetry(
-      lowSensorWet,
-      highSensorWet
+    lowSensorWet =
+      readPoweredSensor(
+        LOW_SENSOR_POWER_PIN,
+        LOW_SENSOR_PIN
+      );
+
+    highSensorWet =
+      readPoweredSensor(
+        HIGH_SENSOR_POWER_PIN,
+        HIGH_SENSOR_PIN
+      );
+
+    Serial.print("LOW SENSOR: ");
+    Serial.println(
+      lowSensorWet ? "WET" : "DRY"
     );
 
-    lastTelemetry = millis();
+    Serial.print("HIGH SENSOR: ");
+    Serial.println(
+      highSensorWet ? "WET" : "DRY"
+    );
+
+    lastMeasurement = millis();
   }
 
-  delay(500);
+  // ==========================================
+  // MQTT EVERY 10 SECONDS
+  // ==========================================
+
+  if (
+    millis() - lastPublish
+    >= publishInterval
+  ) {
+
+    publishTelemetry();
+
+    lastPublish = millis();
+  }
+
+  delay(50);
 }
