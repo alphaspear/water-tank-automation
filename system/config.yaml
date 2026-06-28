@@ -19,5 +19,5 @@ database:
 
 system:
   sensor_timeout_seconds: 15
-  sensor_fill_fallback_minutes: 10
+  sensor_fill_fallback_minutes: 30
   manual_override_warning_minutes: 15
