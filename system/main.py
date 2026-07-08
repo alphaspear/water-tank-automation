@@ -170,7 +170,7 @@ async def automation_loop():
             not state.sensor_online
             and state.current_mode == "auto_fill"
         ):
-
+  
             print("Sensor offline -> emergency stop")
 
             await turn_motor_off()
