@@ -105,7 +105,92 @@ async def sensor_health_monitor():
 async def automation_loop():
 
     while True:
+        # =============================================
+        # FILL UNTIL FULL
+        #=============================================
+        if state.current_mode == "fill_until_full":
 
+            # START MOTOR
+
+            if not state.motor_on:
+
+                print("FILL UNTIL FULL -> STARTING MOTOR")
+
+                success = await turn_motor_on()
+
+                if success:
+
+                    state.motor_on = True
+
+                    state.fill_start_time = time.time()
+
+                    log_event(
+                        "FILL_UNTIL_FULL_START",
+                        "Motor started."
+                    )
+
+            # STOP WHEN FULL
+
+            if (
+                state.high_sensor_wet
+                and state.motor_on
+            ):
+
+                print("FILL UNTIL FULL -> TANK FULL")
+
+                await turn_motor_off()
+
+                state.motor_on = False
+                state.current_mode = "idle"
+                state.active_mode_display = "Idle"
+
+                log_event(
+                    "FILL_UNTIL_FULL_COMPLETE",
+                    "Tank reached full level."
+                )
+                
+
+            # SENSOR OFFLINE
+
+            elif (
+                not state.sensor_online
+                and state.motor_on
+            ):
+
+                print("FILL UNTIL FULL -> SENSOR OFFLINE")
+
+                await turn_motor_off()
+
+                state.motor_on = False
+                state.current_mode = "idle"
+                state.active_mode_display = "Idle"
+
+                log_event(
+                    "FILL_UNTIL_FULL_ABORTED",
+                    "Sensor offline."
+                )
+
+            # FALLBACK TIMEOUT
+
+            elif (
+                state.motor_on
+                and time.time() - state.fill_start_time >=
+                config["system"]["sensor_fill_fallback_minutes"] * 60
+            ):
+
+                print("FILL UNTIL FULL -> TIMEOUT")
+
+                await turn_motor_off()
+
+                state.motor_on = False
+                state.current_mode = "idle"
+                state.active_mode_display = "Idle"
+
+                log_event(
+                    "FILL_UNTIL_FULL_TIMEOUT",
+                    "Fallback timeout reached."
+                )
+                ####
         # =============================================
         # AUTO MODE
         # =============================================
@@ -162,6 +247,30 @@ async def automation_loop():
                     "Motor stopped automatically because tank became FULL"
                 )
 
+        # # =============================================
+        # # SENSOR OFFLINE SAFETY
+        # # =============================================
+
+        # if (
+        #     not state.sensor_online
+        #     and state.current_mode == "auto_fill"
+        # ):
+  
+        #     print("Sensor offline -> emergency stop")
+
+        #     await turn_motor_off()
+
+        #     state.current_mode = "idle"
+
+        #     state.active_mode_display = "Idle"
+
+        #     state.motor_on = False
+
+        #     log_event(
+        #         "EMERGENCY_STOP",
+        #         "Motor stopped because sensor telemetry went offline"
+        #     )
+
         # =============================================
         # SENSOR OFFLINE SAFETY
         # =============================================
@@ -170,21 +279,60 @@ async def automation_loop():
             not state.sensor_online
             and state.current_mode == "auto_fill"
         ):
-  
-            print("Sensor offline -> emergency stop")
 
-            await turn_motor_off()
+            print("Sensor offline detected")
 
-            state.current_mode = "idle"
+            motor_state = await get_motor_state()
 
-            state.active_mode_display = "Idle"
+            # -----------------------------------------
+            # CASE 1 : Sensor offline, motor ON
+            # -----------------------------------------
+            if motor_state is True:
+            
+                print("Sensor OFFLINE, Motor ONLINE -> stopping motor")
 
-            state.motor_on = False
+                await turn_motor_off()
 
-            log_event(
-                "EMERGENCY_STOP",
-                "Motor stopped because sensor telemetry went offline"
-            )
+                state.current_mode = "idle"
+                state.active_mode_display = "Idle"
+                state.motor_on = False
+
+                log_event(
+                    "EMERGENCY_STOP",
+                    "Sensor offline. Motor was running and has been stopped."
+                )
+
+            # -----------------------------------------
+            # CASE 2 : Sensor offline, motor OFF
+            # -----------------------------------------
+            elif motor_state is False:
+            
+                print("Sensor OFFLINE, Motor already OFF")
+
+                state.current_mode = "idle"
+                state.active_mode_display = "Idle"
+                state.motor_on = False
+
+                log_event(
+                    "EMERGENCY_STOP",
+                    "Sensor offline. Motor was already OFF."
+                )
+
+            # -----------------------------------------
+            # CASE 3 : Sensor offline, switch unreachable
+            # -----------------------------------------
+            else:
+            
+                print("Sensor OFFLINE, Switch OFFLINE")
+
+                state.current_mode = "idle"
+                state.active_mode_display = "Idle"
+                state.motor_on = False
+
+                log_event(
+                    "EMERGENCY_STOP",
+                    "Sensor offline and switch unreachable. Resetting automation."
+                )
 
         await asyncio.sleep(2)
 
@@ -430,89 +578,110 @@ async def delete_schedule_route(schedule_id: int):
 # FILL UNTIL FULL
 # =====================================================
 
+
 @app.post("/motor/fill-until-full")
 async def fill_until_full():
 
     if state.current_mode != "idle":
-
         return {
             "success": False,
             "message": "Another mode already active"
         }
 
-    success = await turn_motor_on()
-
-    if not success:
-
-        return {
-            "success": False
-        }
-
     state.current_mode = "fill_until_full"
 
-    state.active_mode_display = (
-        "Fill Until Full"
-    )
-
-    state.motor_on = True
+    state.active_mode_display = "Fill Until Full"
 
     log_event(
-        "FILL_UNTIL_FULL_START",
-        "Fill until full started manually"
-    )
-
-    async def monitor_fill():
-
-        start_time = time.time()
-
-        fallback_timeout = (
-            60
-            * config["system"][
-                "sensor_fill_fallback_minutes"
-            ]
-        )
-
-        while True:
-
-            if state.high_sensor_wet:
-
-                print("Tank full reached")
-
-                break
-
-            if not state.sensor_online:
-
-                print("Sensor offline stop")
-
-                break
-
-            elapsed = (
-                time.time() - start_time
-            )
-
-            if elapsed >= fallback_timeout:
-
-                print("Fallback timeout")
-
-                break
-
-            await asyncio.sleep(2)
-
-        await turn_motor_off()
-
-        state.current_mode = "idle"
-
-        state.active_mode_display = "Idle"
-
-        state.motor_on = False
-
-        log_event(
-            "FILL_UNTIL_FULL_STOP",
-            "Fill until full completed"
-        )
-
-    asyncio.create_task(
-        monitor_fill()
+        "FILL_UNTIL_FULL_REQUESTED",
+        "Fill Until Full requested"
     )
 
     return {"success": True}
+
+# @app.post("/motor/fill-until-full")
+# async def fill_until_full():
+
+#     if state.current_mode != "idle":
+
+#         return {
+#             "success": False,
+#             "message": "Another mode already active"
+#         }
+
+#     success = await turn_motor_on()
+
+#     if not success:
+
+#         return {
+#             "success": False
+#         }
+
+#     state.current_mode = "fill_until_full"
+
+#     state.active_mode_display = (
+#         "Fill Until Full"
+#     )
+
+#     state.motor_on = True
+
+#     log_event(
+#         "FILL_UNTIL_FULL_START",
+#         "Fill until full started manually"
+#     )
+
+#     async def monitor_fill():
+
+#         start_time = time.time()
+
+#         fallback_timeout = (
+#             60
+#             * config["system"][
+#                 "sensor_fill_fallback_minutes"
+#             ]
+#         )
+
+#         while True:
+
+#             if state.high_sensor_wet:
+
+#                 print("Tank full reached")
+
+#                 break
+
+#             if not state.sensor_online:
+
+#                 print("Sensor offline stop")
+
+#                 break
+
+#             elapsed = (
+#                 time.time() - start_time
+#             )
+
+#             if elapsed >= fallback_timeout:
+
+#                 print("Fallback timeout")
+
+#                 break
+
+#             await asyncio.sleep(2)
+
+#         await turn_motor_off()
+
+#         state.current_mode = "idle"
+
+#         state.active_mode_display = "Idle"
+
+#         state.motor_on = False
+
+#         log_event(
+#             "FILL_UNTIL_FULL_STOP",
+#             "Fill until full completed"
+#         )
+
+#     asyncio.create_task(
+#         monitor_fill()
+#     )
+
+#     return {"success": True}
